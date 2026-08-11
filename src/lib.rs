@@ -115,6 +115,7 @@ pub use crate::compute::{
 #[doc(inline)]
 pub use crate::style::Style;
 #[doc(inline)]
+pub use crate::tree::eviction_counts;
 pub use crate::tree::traits::*;
 #[cfg(feature = "taffy_tree")]
 #[doc(inline)]
