@@ -11,31 +11,36 @@ use crate::RequestedAxis;
 ///
 /// Nine before this was measured, which was one slot per category under the
 /// old fixed-slot scheme. With slots as plain storage that number is a working
-/// set, and nine is below ours: intrinsic sizing asks a node more distinct
-/// questions than that in a single pass, so the cache spent its time evicting
-/// entries it was about to want.
+/// set instead, and nine is well below ours: intrinsic sizing asks a node many
+/// more distinct questions than that in a single pass, so the cache spent its
+/// time evicting entries it was about to want.
 ///
-/// Measured against typing one character into a 6,331 node tree, counting
+/// Measured against typing one character into a ~7,000 node tree, counting
 /// `compute_child_layout` calls and the distinct nodes they touched:
 ///
 /// |  size | recomputations | distinct nodes | layout phase |
 /// | ----: | -------------: | -------------: | -----------: |
-/// |     9 |          3,334 |            127 |       2.6 ms |
-/// |    12 |          3,747 |            123 |       3.5 ms |
-/// |    16 |            176 |             17 |      0.28 ms |
-/// |    24 |            142 |             15 |      0.32 ms |
+/// |     9 |          3,334 |            127 |      2.60 ms |
+/// |    12 |          3,747 |            123 |      3.50 ms |
+/// |    16 |            337 |             24 |      0.47 ms |
+/// |    24 |            141 |             15 |      0.27 ms |
+/// |    32 |            141 |             15 |      0.26 ms |
 ///
 /// It is a cliff rather than a curve. Below the working set the round-robin
-/// eviction thrashes and more slots do not help — 12 is no better than 9 —
-/// and above it almost everything hits. 16 is just past the edge and 24 buys
-/// nothing further, so 16 it is: ~16 MB of resident memory on that tree, for
-/// layout falling from 2.6 ms to 0.28 ms.
+/// eviction thrashes and more slots do not help — 12 is no better than 9 — and
+/// above it almost everything hits. 24 is where it saturates: 32 is identical.
 ///
-/// The 17 distinct nodes are the interesting number. Around 15 nodes are
-/// genuinely dirty per keystroke, so at 16 slots the cache recomputes what
-/// actually changed and nothing else, which is what it was always supposed to
-/// do.
-const CACHE_SIZE: usize = 16;
+/// The 15 distinct nodes are the number to read. Around that many are genuinely
+/// dirty per keystroke, so the cache now recomputes what changed and nothing
+/// else, which is what it was always for.
+///
+/// **This constant was first tuned to 16 against a workload that was itself
+/// broken.** `element.style.x = y` was a silent no-op in the embedder at the
+/// time, so an autosizing text field never actually resized and the layout it
+/// provoked was smaller than the real one. With that fixed the working set grew
+/// and 16 became the thrashing case. A constant is only as good as the workload
+/// it was measured against, and a broken workload measures a smaller one.
+const CACHE_SIZE: usize = 24;
 
 // Manually written-out results of float to u32 bit casts because
 // `f32::to_bits` is not yet const at our MSRV.
