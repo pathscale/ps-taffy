@@ -8,7 +8,34 @@ use crate::tree::{LayoutInput, LayoutOutput, RunMode};
 use crate::RequestedAxis;
 
 /// The number of cache entries for each node in the tree
-const CACHE_SIZE: usize = 9;
+///
+/// Nine before this was measured, which was one slot per category under the
+/// old fixed-slot scheme. With slots as plain storage that number is a working
+/// set, and nine is below ours: intrinsic sizing asks a node more distinct
+/// questions than that in a single pass, so the cache spent its time evicting
+/// entries it was about to want.
+///
+/// Measured against typing one character into a 6,331 node tree, counting
+/// `compute_child_layout` calls and the distinct nodes they touched:
+///
+/// |  size | recomputations | distinct nodes | layout phase |
+/// | ----: | -------------: | -------------: | -----------: |
+/// |     9 |          3,334 |            127 |       2.6 ms |
+/// |    12 |          3,747 |            123 |       3.5 ms |
+/// |    16 |            176 |             17 |      0.28 ms |
+/// |    24 |            142 |             15 |      0.32 ms |
+///
+/// It is a cliff rather than a curve. Below the working set the round-robin
+/// eviction thrashes and more slots do not help — 12 is no better than 9 —
+/// and above it almost everything hits. 16 is just past the edge and 24 buys
+/// nothing further, so 16 it is: ~16 MB of resident memory on that tree, for
+/// layout falling from 2.6 ms to 0.28 ms.
+///
+/// The 17 distinct nodes are the interesting number. Around 15 nodes are
+/// genuinely dirty per keystroke, so at 16 slots the cache recomputes what
+/// actually changed and nothing else, which is what it was always supposed to
+/// do.
+const CACHE_SIZE: usize = 16;
 
 // Manually written-out results of float to u32 bit casts because
 // `f32::to_bits` is not yet const at our MSRV.
