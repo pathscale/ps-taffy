@@ -214,6 +214,8 @@ pub struct Cache {
     measure_inputs: [Option<MeasureInputs>; CACHE_SIZE],
     /// Tracks if all cache entries are empty
     is_empty: bool,
+    /// Round-robin cursor for evicting when every slot is taken.
+    next_eviction: u8,
 }
 
 impl Default for Cache {
@@ -230,71 +232,46 @@ impl Cache {
             measure_entries: [None; CACHE_SIZE],
             measure_inputs: [None; CACHE_SIZE],
             is_empty: true,
+            next_eviction: 0,
         }
     }
 
-    /// Return the cache slot to cache the current computed result in
+    /// Choose which slot to write a measurement into.
     ///
-    /// ## Caching Strategy
+    /// The slot function this replaces mapped each question to one fixed slot,
+    /// and documented the assumption that made it safe: "definite available
+    /// space shares a cache slot with max-content because a node will generally
+    /// be sized under one or the other but not both."
     ///
-    /// We need multiple cache slots, because a node's size is often queried by it's parent multiple times in the course of the layout
-    /// process, and we don't want later results to clobber earlier ones.
+    /// Intrinsic sizing breaks that assumption. It re-descends the same subtree
+    /// offering a sequence of different definite widths, and with neither
+    /// dimension known every one of those lands in the same slot, so each
+    /// measurement destroys the one before it. The cache was evicting the
+    /// entries it was about to be asked for.
     ///
-    /// The two variables that we care about when determining cache slot are:
+    /// Slots are only storage: `get` already scans all of them. So the rule is
+    /// simply to not clobber a different question — reuse the entry for this
+    /// exact key, else take an empty slot, else evict the oldest write.
     ///
-    ///   - How many "known_dimensions" are set. In the worst case, a node may be called first with neither dimension known, then with one
-    ///     dimension known (either width of height - which doesn't matter for our purposes here), and then with both dimensions known.
-    ///   - Whether unknown dimensions are being sized under a min-content or a max-content available space constraint (definite available space
-    ///     shares a cache slot with max-content because a node will generally be sized under one or the other but not both).
-    ///
-    /// ## Cache slots:
-    ///
-    /// - Slot 0: Both known_dimensions were set
-    /// - Slots 1-4: 1 of 2 known_dimensions were set and:
-    ///   - Slot 1: width but not height known_dimension was set and the other dimension was either a MaxContent or Definite available space constraintraint
-    ///   - Slot 2: width but not height known_dimension was set and the other dimension was a MinContent constraint
-    ///   - Slot 3: height but not width known_dimension was set and the other dimension was either a MaxContent or Definite available space constraintable space constraint
-    ///   - Slot 4: height but not width known_dimension was set and the other dimension was a MinContent constraint
-    /// - Slots 5-8: Neither known_dimensions were set and:
-    ///   - Slot 5: x-axis available space is MaxContent or Definite and y-axis available space is MaxContent or Definite
-    ///   - Slot 6: x-axis available space is MaxContent or Definite and y-axis available space is MinContent
-    ///   - Slot 7: x-axis available space is MinContent and y-axis available space is MaxContent or Definite
-    ///   - Slot 8: x-axis available space is MinContent and y-axis available space is MinContent
+    /// Eviction is insertion-ordered rather than least-recently-used, which is
+    /// what Chromium's `LayoutResult` cache does. `get` takes `&self` and so
+    /// cannot record a touch, and adding interior mutability to a lookup on the
+    /// hottest path in layout costs more than the better eviction is worth at
+    /// nine entries.
     #[inline]
-    fn compute_cache_slot(known_dimensions: Size<Option<f32>>, available_space: Size<AvailableSpace>) -> usize {
-        use AvailableSpace::{Definite, MaxContent, MinContent};
-
-        let has_known_width = known_dimensions.width.is_some();
-        let has_known_height = known_dimensions.height.is_some();
-
-        // Slot 0: Both known_dimensions were set
-        if has_known_width && has_known_height {
-            return 0;
+    fn slot_for(&mut self, key: &CacheKey) -> usize {
+        for (index, entry) in self.measure_entries.iter().enumerate() {
+            match entry {
+                Some(entry) if entry.key == *key => return index,
+                _ => {}
+            }
         }
-
-        // Slot 1: width but not height known_dimension was set and the other dimension was either a MaxContent or Definite available space constraint
-        // Slot 2: width but not height known_dimension was set and the other dimension was a MinContent constraint
-        if has_known_width && !has_known_height {
-            return 1 + (available_space.height == MinContent) as usize;
+        if let Some(index) = self.measure_entries.iter().position(Option::is_none) {
+            return index;
         }
-
-        // Slot 3: height but not width known_dimension was set and the other dimension was either a MaxContent or Definite available space constraint
-        // Slot 4: height but not width known_dimension was set and the other dimension was a MinContent constraint
-        if has_known_height && !has_known_width {
-            return 3 + (available_space.width == MinContent) as usize;
-        }
-
-        // Slots 5-8: Neither known_dimensions were set and:
-        match (available_space.width, available_space.height) {
-            // Slot 5: x-axis available space is MaxContent or Definite and y-axis available space is MaxContent or Definite
-            (MaxContent | Definite(_), MaxContent | Definite(_)) => 5,
-            // Slot 6: x-axis available space is MaxContent or Definite and y-axis available space is MinContent
-            (MaxContent | Definite(_), MinContent) => 6,
-            // Slot 7: x-axis available space is MinContent and y-axis available space is MaxContent or Definite
-            (MinContent, MaxContent | Definite(_)) => 7,
-            // Slot 8: x-axis available space is MinContent and y-axis available space is MinContent
-            (MinContent, MinContent) => 8,
-        }
+        let index = self.next_eviction as usize;
+        self.next_eviction = (self.next_eviction + 1) % CACHE_SIZE as u8;
+        index
     }
 
     /// Try to retrieve a cached result from the cache
@@ -355,9 +332,9 @@ impl Cache {
             }
             RunMode::ComputeSize => {
                 self.is_empty = false;
-                let cache_slot = Self::compute_cache_slot(input.known_dimensions, input.available_space);
-                self.measure_entries[cache_slot] = Some(CacheEntry { key, content: layout_output.size });
-                self.measure_inputs[cache_slot] = Some(MeasureInputs {
+                let slot = self.slot_for(&key);
+                self.measure_entries[slot] = Some(CacheEntry { key, content: layout_output.size });
+                self.measure_inputs[slot] = Some(MeasureInputs {
                     known_dimensions: input.known_dimensions,
                     available_space: input.available_space,
                 });
