@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-taffy = { path = "../.." }
+taffy = { package = "ps-taffy", path = "../.." }
 cosmic-text = "0.13"

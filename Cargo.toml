@@ -1,5 +1,5 @@
 [package]
-name = "taffy"
+name = "ps-taffy"
 version = "0.13.0"
 authors = [
     "Alice Cecile <alice.i.cecile@gmail.com>",
@@ -14,6 +14,13 @@ repository = "https://github.com/DioxusLabs/taffy"
 keywords = ["cross-platform", "layout", "flexbox", "css-grid", "grid"]
 categories = ["gui"]
 license = "MIT"
+
+[lib]
+# Published as `ps-taffy`, imported as `taffy`. Without this every `use
+# taffy::...` in the dependent tree would have to change, and the fork would
+# stop being a drop-in replacement. `ps-accesskit-xplat` is the fork that
+# omitted this line, and its doctest has been failing ever since.
+name = "taffy"
 
 [dependencies]
 arrayvec = { version = "0.7", default-features = false }
@@ -93,7 +100,7 @@ roxmltree = "0.21.1"
 taffy_test_helpers = { path = "tests/common"}
 
 # Enable default features for tests and examples
-taffy = { path = ".", features = ["parse"] }
+taffy = { package = "ps-taffy", path = ".", features = ["parse"] }
 
 [profile.release]
 lto = true
