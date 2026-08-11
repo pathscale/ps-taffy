@@ -18,7 +18,17 @@ mod caching {
 
         taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, test_measure_function).unwrap();
 
-        assert_eq!(taffy.get_node_context_mut(leaf).unwrap().count, 7);
+        // 7 before the validity test was added to `Cache::get`, 6 after.
+        //
+        // These assert how often the leaf is *measured*, which is the number
+        // this cache work exists to move, so the drop is the result rather than
+        // a regression. Layout output is unchanged: the 5,525 generated tests
+        // cover that, and they pass.
+        //
+        // Kept as an exact count rather than an upper bound, deliberately. A
+        // `<= 7` here would stay green if the cache silently got worse again,
+        // which is the failure this number is here to catch.
+        assert_eq!(taffy.get_node_context_mut(leaf).unwrap().count, 6);
     }
 
     #[test]
@@ -35,6 +45,16 @@ mod caching {
         }
 
         taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, test_measure_function).unwrap();
-        assert_eq!(taffy.get_node_context_mut(leaf).unwrap().count, 7);
+        // 7 before the validity test was added to `Cache::get`, 6 after.
+        //
+        // These assert how often the leaf is *measured*, which is the number
+        // this cache work exists to move, so the drop is the result rather than
+        // a regression. Layout output is unchanged: the 5,525 generated tests
+        // cover that, and they pass.
+        //
+        // Kept as an exact count rather than an upper bound, deliberately. A
+        // `<= 7` here would stay green if the cache silently got worse again,
+        // which is the failure this number is here to catch.
+        assert_eq!(taffy.get_node_context_mut(leaf).unwrap().count, 6);
     }
 }
