@@ -19,7 +19,7 @@ env:
 
 jobs:
   check-advisories:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@cargo-deny
@@ -27,7 +27,7 @@ jobs:
         run: cargo deny check advisories
 
   check-bans:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@cargo-deny
@@ -35,7 +35,7 @@ jobs:
         run: cargo deny check bans
 
   check-licenses:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@cargo-deny
@@ -43,7 +43,7 @@ jobs:
         run: cargo deny check licenses
 
   check-sources:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@cargo-deny
