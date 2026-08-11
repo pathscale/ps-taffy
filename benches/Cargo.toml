@@ -16,7 +16,7 @@ license = "MIT"
 criterion = "0.7"
 rand = { version = "0.9" }
 rand_chacha = "0.9"
-taffy = { path = ".." }
+taffy = { package = "ps-taffy", path = ".." }
 taffy_03 = { package = "taffy", version = "0.3", optional = true }
 yoga = { version = "0.5.0", optional = true }
 ordered-float = { version = "4", optional = true }
