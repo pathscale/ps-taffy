@@ -218,14 +218,24 @@ fn axis_still_valid(
 ) -> bool {
     use AvailableSpace::{Definite, MaxContent, MinContent};
 
-    // A known dimension is imposed on the result rather than discovered, so it
-    // has to match exactly. Nothing about the offered space can rescue it.
+    // A known dimension is imposed on the result rather than discovered, so two
+    // different ones cannot share an answer.
     match (stored_known, new_known) {
         (Some(stored), Some(new)) => return stored == new,
         (None, None) => {}
-        // One side had the dimension decided and the other did not: different
-        // questions entirely.
-        _ => return false,
+        // Measured free, now imposed. The entry still answers if it was measured
+        // under a definite offer of exactly the imposed size and the content fit
+        // inside it: laying the same content out at a width it already fits
+        // breaks the lines in the same places, so the cross axis is unchanged.
+        // The axis itself is not read from the entry, `get` substitutes the
+        // imposed value, because that is what the caller has decided it is.
+        (None, Some(new)) => {
+            return matches!(stored_space, Definite(stored) if stored == new) && measured <= new;
+        }
+        // Imposed, now free. Not recoverable: the free query is entitled to
+        // measure narrower than whatever was imposed, and the entry cannot say
+        // what that narrower measure would have been.
+        (Some(_), None) => return false,
     }
 
     match (stored_space, new_space) {
@@ -359,7 +369,14 @@ impl Cache {
                         entry.content.height,
                     );
                     if width_ok && height_ok {
-                        return Some(LayoutOutput::from_outer_size(entry.content));
+                        // A known dimension is what the caller has decided the
+                        // size is, so it wins over whatever the entry measured.
+                        // Identical on the exact-match path above, where the two
+                        // known dimensions are equal by construction.
+                        return Some(LayoutOutput::from_outer_size(Size {
+                            width: input.known_dimensions.width.unwrap_or(entry.content.width),
+                            height: input.known_dimensions.height.unwrap_or(entry.content.height),
+                        }));
                     }
                 }
 
@@ -415,4 +432,87 @@ pub enum ClearState {
     Cleared,
     /// Everything was already cleared
     AlreadyEmpty,
+}
+
+#[cfg(test)]
+mod relaxation_tests {
+    use super::*;
+    use crate::geometry::{Line, Size};
+    use crate::tree::{LayoutInput, LayoutOutput, RunMode, SizingMode};
+
+    fn measure_input(known: Size<Option<f32>>, space: Size<AvailableSpace>) -> LayoutInput {
+        LayoutInput {
+            run_mode: RunMode::ComputeSize,
+            sizing_mode: SizingMode::ContentSize,
+            axis: RequestedAxis::Both,
+            known_dimensions: known,
+            parent_size: Size { width: Some(800.0), height: Some(600.0) },
+            available_space: space,
+            vertical_margins_are_collapsible: Line::FALSE,
+        }
+    }
+
+    /// Measured free under a definite offer, then asked for again with that same
+    /// size imposed. Same question: content that already fits a 300pt offer
+    /// breaks its lines identically when told it is 300pt wide.
+    ///
+    /// This arm is not reached by any of the 5,541 generated tests, which is why
+    /// it is tested here rather than assumed covered.
+    #[test]
+    fn an_imposed_size_reuses_the_measurement_taken_under_the_same_offer() {
+        let mut cache = Cache::new();
+        let stored = measure_input(
+            Size { width: None, height: None },
+            Size { width: AvailableSpace::Definite(300.0), height: AvailableSpace::MaxContent },
+        );
+        cache.store(&stored, LayoutOutput::from_outer_size(Size { width: 250.0, height: 40.0 }));
+
+        let asked = measure_input(
+            Size { width: Some(300.0), height: None },
+            Size { width: AvailableSpace::Definite(300.0), height: AvailableSpace::MaxContent },
+        );
+        let hit = cache.get(&asked).expect("the entry still answers the question");
+
+        // The imposed width wins over the 250 that was measured: that is what
+        // the caller has decided the size is. The height carries over, which is
+        // the whole point of reusing the entry.
+        assert_eq!(hit.size.width, 300.0, "the imposed width is the answer, not the measured one");
+        assert_eq!(hit.size.height, 40.0, "the measured height carries over");
+    }
+
+    /// The reverse is not recoverable: a free query may measure narrower than
+    /// whatever was imposed, and the entry cannot say what that would have been.
+    #[test]
+    fn a_free_query_does_not_reuse_an_imposed_measurement() {
+        let mut cache = Cache::new();
+        let stored = measure_input(
+            Size { width: Some(300.0), height: None },
+            Size { width: AvailableSpace::Definite(300.0), height: AvailableSpace::MaxContent },
+        );
+        cache.store(&stored, LayoutOutput::from_outer_size(Size { width: 300.0, height: 40.0 }));
+
+        let asked = measure_input(
+            Size { width: None, height: None },
+            Size { width: AvailableSpace::Definite(300.0), height: AvailableSpace::MaxContent },
+        );
+        assert!(cache.get(&asked).is_none(), "a free measure must not inherit an imposed width");
+    }
+
+    /// Content that overflowed the offer it was measured under wraps differently
+    /// once that size is imposed, so the entry cannot be reused.
+    #[test]
+    fn an_overflowing_measurement_is_not_reused_when_the_size_is_imposed() {
+        let mut cache = Cache::new();
+        let stored = measure_input(
+            Size { width: None, height: None },
+            Size { width: AvailableSpace::Definite(300.0), height: AvailableSpace::MaxContent },
+        );
+        cache.store(&stored, LayoutOutput::from_outer_size(Size { width: 420.0, height: 20.0 }));
+
+        let asked = measure_input(
+            Size { width: Some(300.0), height: None },
+            Size { width: AvailableSpace::Definite(300.0), height: AvailableSpace::MaxContent },
+        );
+        assert!(cache.get(&asked).is_none(), "content wider than the offer must be re-measured");
+    }
 }
