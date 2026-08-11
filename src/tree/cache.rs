@@ -2,10 +2,24 @@
 
 #![allow(clippy::unusual_byte_groupings)]
 
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use crate::geometry::Size;
 use crate::style::AvailableSpace;
 use crate::tree::{LayoutInput, LayoutOutput, RunMode};
 use crate::RequestedAxis;
+
+/// Live entries discarded because every slot was taken, and stores overall.
+///
+/// Temporary: this exists to settle whether a better eviction policy has
+/// anything left to improve once the cache is sized to the working set.
+static EVICTIONS: AtomicU64 = AtomicU64::new(0);
+static STORES: AtomicU64 = AtomicU64::new(0);
+
+/// `(evictions, stores)` since process start.
+pub fn eviction_counts() -> (u64, u64) {
+    (EVICTIONS.load(Ordering::Relaxed), STORES.load(Ordering::Relaxed))
+}
 
 /// The number of cache entries for each node in the tree
 ///
@@ -301,6 +315,7 @@ impl Cache {
         if let Some(index) = self.measure_entries.iter().position(Option::is_none) {
             return index;
         }
+        EVICTIONS.fetch_add(1, Ordering::Relaxed);
         let index = self.next_eviction as usize;
         self.next_eviction = (self.next_eviction + 1) % CACHE_SIZE as u8;
         index
@@ -364,6 +379,7 @@ impl Cache {
             }
             RunMode::ComputeSize => {
                 self.is_empty = false;
+                STORES.fetch_add(1, Ordering::Relaxed);
                 let slot = self.slot_for(&key);
                 self.measure_entries[slot] = Some(CacheEntry { key, content: layout_output.size });
                 self.measure_inputs[slot] = Some(MeasureInputs {
