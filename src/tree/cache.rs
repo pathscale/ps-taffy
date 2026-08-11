@@ -132,6 +132,76 @@ pub(crate) struct CacheEntry<T> {
     content: T,
 }
 
+/// The sizing question a measure entry answered, kept unpacked.
+///
+/// [`CacheKey`] packs its inputs into two `u64`s, which makes equality cheap and
+/// makes any other comparison impossible. Answering "is this stored result still
+/// correct for a different question" needs the numbers themselves, so measure
+/// entries carry them alongside the key.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub(crate) struct MeasureInputs {
+    /// The dimensions that were already decided when this entry was computed.
+    known_dimensions: Size<Option<f32>>,
+    /// The space the node was offered when this entry was computed.
+    available_space: Size<AvailableSpace>,
+}
+
+/// Whether a stored measurement still answers a new question, per axis.
+///
+/// Taffy's `get` accepts an entry only on exact key equality. That is sound but
+/// pessimistic: intrinsic sizing re-descends the same subtree with a sequence of
+/// different definite widths, and an answer measured under a wider offer is
+/// still the right answer whenever the content fit inside the narrower one.
+///
+/// This is Yoga's `canUseCachedMeasurement`, whose three heuristics live in
+/// `yoga/algorithm/Cache.cpp`. The one that matters here is
+/// `newSizeIsStricterAndStillValid`: both offers definite, the new one smaller,
+/// and the measured content already inside it.
+///
+/// Being wrong here is a wrong layout rather than a slow one, so each arm below
+/// only returns true when the measured extent is provably unaffected by the
+/// difference between the two offers.
+#[inline]
+fn axis_still_valid(
+    stored_known: Option<f32>,
+    new_known: Option<f32>,
+    stored_space: AvailableSpace,
+    new_space: AvailableSpace,
+    measured: f32,
+) -> bool {
+    use AvailableSpace::{Definite, MaxContent, MinContent};
+
+    // A known dimension is imposed on the result rather than discovered, so it
+    // has to match exactly. Nothing about the offered space can rescue it.
+    match (stored_known, new_known) {
+        (Some(stored), Some(new)) => return stored == new,
+        (None, None) => {}
+        // One side had the dimension decided and the other did not: different
+        // questions entirely.
+        _ => return false,
+    }
+
+    match (stored_space, new_space) {
+        // Identical offers: what the exact-match path already accepts.
+        (MinContent, MinContent) | (MaxContent, MaxContent) => true,
+        (Definite(stored), Definite(new)) => {
+            // Equal is the plain hit. Otherwise the content must have fit inside
+            // *both* offers: fitting the wider one alone does not show what a
+            // narrower one would have wrapped.
+            stored == new || (measured <= stored && measured <= new)
+        }
+        // Measured with no upper bound and it fit inside the new offer, so the
+        // new offer never binds. Yoga's `oldSizeIsMaxContentAndStillFits`.
+        (MaxContent, Definite(new)) => measured <= new,
+        // The reverse is not safe: a max-content query can be wider than
+        // whatever the stored definite offer allowed.
+        (Definite(_), MaxContent) => false,
+        // Min-content is a different measurement, not a looser or tighter one.
+        (MinContent, _) | (_, MinContent) => false,
+    }
+}
+
 /// A cache for caching the results of a sizing a Grid Item or Flexbox Item
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
@@ -140,6 +210,8 @@ pub struct Cache {
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
     /// The cache entries for the node's preliminary size measurements
     measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
+    /// The unpacked question each measure entry answered, for validity testing.
+    measure_inputs: [Option<MeasureInputs>; CACHE_SIZE],
     /// Tracks if all cache entries are empty
     is_empty: bool,
 }
@@ -153,7 +225,12 @@ impl Default for Cache {
 impl Cache {
     /// Create a new empty cache
     pub const fn new() -> Self {
-        Self { final_layout_entry: None, measure_entries: [None; CACHE_SIZE], is_empty: true }
+        Self {
+            final_layout_entry: None,
+            measure_entries: [None; CACHE_SIZE],
+            measure_inputs: [None; CACHE_SIZE],
+            is_empty: true,
+        }
     }
 
     /// Return the cache slot to cache the current computed result in
@@ -227,10 +304,37 @@ impl Cache {
         match input.run_mode {
             RunMode::PerformLayout => self.final_layout_entry.filter(|entry| entry.key == key).map(|e| e.content),
             RunMode::ComputeSize => {
-                for entry in self.measure_entries.iter().flatten() {
-                    if entry.key.kd_available_space == key.kd_available_space
-                        && (entry.key.x_axis_parent_size() == key.x_axis_parent_size())
-                    {
+                for (entry, stored) in self.measure_entries.iter().zip(self.measure_inputs.iter()) {
+                    let Some(entry) = entry else { continue };
+
+                    // Percentages resolve against the parent, so an entry
+                    // measured under a different parent size answers a different
+                    // question no matter how the offers compare.
+                    if entry.key.x_axis_parent_size() != key.x_axis_parent_size() {
+                        continue;
+                    }
+
+                    if entry.key.kd_available_space == key.kd_available_space {
+                        return Some(LayoutOutput::from_outer_size(entry.content));
+                    }
+
+                    // Not the same question. Ask whether the answer still holds.
+                    let Some(stored) = stored else { continue };
+                    let width_ok = axis_still_valid(
+                        stored.known_dimensions.width,
+                        input.known_dimensions.width,
+                        stored.available_space.width,
+                        input.available_space.width,
+                        entry.content.width,
+                    );
+                    let height_ok = axis_still_valid(
+                        stored.known_dimensions.height,
+                        input.known_dimensions.height,
+                        stored.available_space.height,
+                        input.available_space.height,
+                        entry.content.height,
+                    );
+                    if width_ok && height_ok {
                         return Some(LayoutOutput::from_outer_size(entry.content));
                     }
                 }
@@ -253,6 +357,10 @@ impl Cache {
                 self.is_empty = false;
                 let cache_slot = Self::compute_cache_slot(input.known_dimensions, input.available_space);
                 self.measure_entries[cache_slot] = Some(CacheEntry { key, content: layout_output.size });
+                self.measure_inputs[cache_slot] = Some(MeasureInputs {
+                    known_dimensions: input.known_dimensions,
+                    available_space: input.available_space,
+                });
             }
             RunMode::PerformHiddenLayout => {}
         }
@@ -266,6 +374,7 @@ impl Cache {
         self.is_empty = true;
         self.final_layout_entry = None;
         self.measure_entries = [None; CACHE_SIZE];
+        self.measure_inputs = [None; CACHE_SIZE];
         ClearState::Cleared
     }
 
