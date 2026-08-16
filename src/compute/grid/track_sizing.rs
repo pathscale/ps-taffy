@@ -1418,6 +1418,16 @@ fn distribute_space_up_to_limits(
         let iteration_item_incurred_increase =
             f32_min(min_increase_limit, space_to_distribute / track_distribution_proportion_sum);
 
+        // A track counts as still growable above while `property + increase < limit`, but the
+        // headroom that sizes this iteration is `limit - property - increase`, and f32 rounding
+        // lets the first be true while the second is exactly zero. Every per-track increase below
+        // is then zero, the `increase > 0.0` guard rejects all of them, and neither the tracks nor
+        // `space_to_distribute` change, so the next iteration recomputes these same values and the
+        // loop never ends. Nothing can be distributed from here, so stop rather than spin.
+        if iteration_item_incurred_increase <= 0.0 {
+            break;
+        }
+
         for track in tracks.iter_mut().filter(|track| track_is_affected(track)) {
             let increase = iteration_item_incurred_increase * track_distribution_proportion(track);
             if increase > 0.0
@@ -1431,4 +1441,48 @@ fn distribute_space_up_to_limits(
     }
 
     space_to_distribute
+}
+
+#[cfg(test)]
+mod tests {
+    use super::distribute_space_up_to_limits;
+    use crate::compute::grid::types::GridTrack;
+    use crate::style::{MaxTrackSizingFunction, MinTrackSizingFunction};
+
+    /// `base_size < growth_limit` can hold while `growth_limit - base_size` rounds to exactly
+    /// zero, which leaves a track permanently growable but with nothing left to give it. Every
+    /// increase the loop then computes is zero, so no track and no remaining space ever change
+    /// and the iteration repeats identically: before the guard in `distribute_space_up_to_limits`
+    /// this call never returned.
+    ///
+    /// The column sizes are the ones a three-column table with an empty leading header cell
+    /// produced in a real document, reached through `maximise_tracks` (every track affected, a
+    /// flat distribution proportion, growth limit as the limit).
+    #[test]
+    fn distribute_space_up_to_limits_terminates_on_zero_headroom() {
+        let mut track = |base_size: f32, growth_limit: f32| {
+            let mut track = GridTrack::new(MinTrackSizingFunction::auto(), MaxTrackSizingFunction::auto());
+            track.base_size = base_size;
+            track.growth_limit = growth_limit;
+            track
+        };
+        let mut tracks = [track(13.788905, 16.951557), track(3.1626515, 13.788905)];
+
+        let remaining = distribute_space_up_to_limits(
+            142.53139,
+            &mut tracks,
+            |_| true,
+            |_| 1.0,
+            |track| track.base_size,
+            |track| track.growth_limit,
+        );
+
+        // Reaching here at all is the regression. The rest states that stopping early does not
+        // invent space: what was not distributed comes back, and no track grew past its limit.
+        assert!(remaining.is_finite());
+        assert!(remaining > 0.0);
+        for track in &tracks {
+            assert!(track.base_size + track.item_incurred_increase <= track.growth_limit + 0.01);
+        }
+    }
 }
