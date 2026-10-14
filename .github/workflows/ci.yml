@@ -19,6 +19,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.71
@@ -29,6 +31,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --features debug
 
@@ -37,6 +41,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --examples
 
@@ -47,6 +53,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cd examples/cosmic_text && cargo build
 
@@ -56,6 +64,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features
       - run: cargo test --tests --no-default-features --features taffy_tree
@@ -66,6 +76,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build
       - run: cargo test --tests
@@ -75,6 +87,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --all-features
       - run: cargo test --tests --all-features
@@ -85,6 +99,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: i686-linux-android
@@ -97,6 +113,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --features serde
       - run: cargo test --tests --features serde
@@ -106,6 +124,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --features parse_faster
       - run: cargo test --tests --features parse_faster
@@ -115,6 +135,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features std,taffy_tree,grid,flexbox,block_layout
       - run: cargo test --tests --no-default-features --features std,taffy_tree,grid,flexbox,block_layout,calc
@@ -124,6 +146,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features std,taffy_tree,grid,flexbox,block_layout
       - run: cargo test --tests --no-default-features --features std,taffy_tree,grid,flexbox,block_layout
@@ -133,6 +157,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features std
       - run: cargo build --no-default-features --features std,taffy_tree
@@ -144,6 +170,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features flexbox,std
       - run: cargo build --no-default-features --features flexbox,std,taffy_tree
@@ -154,6 +182,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features grid,std
       - run: cargo build --no-default-features --features grid,std,taffy_tree
@@ -164,6 +194,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features block_layout,std
       - run: cargo build --no-default-features --features block_layout,std,taffy_tree
@@ -175,6 +207,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features grid,detailed_layout_info,std
       - run: cargo build --no-default-features --features grid,detailed_layout_info,std,taffy_tree
@@ -186,6 +220,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features flexbox,detailed_layout_info,std
       - run: cargo build --no-default-features --features flexbox,detailed_layout_info,std,taffy_tree
@@ -198,6 +234,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features alloc
       - run: cargo build --no-default-features --features alloc,taffy_tree
@@ -208,6 +246,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --no-default-features --features alloc,grid,flexbox,block_layout
       - run: cargo build --no-default-features --features alloc,grid,flexbox,block_layout,taffy_tree
@@ -218,6 +258,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -229,6 +271,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -245,6 +289,8 @@ jobs:
       RUSTDOCFLAGS: "--cfg docsrs"
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
@@ -256,6 +302,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Run Markdown Lint
         uses: DavidAnson/markdownlint-cli2-action@v24.2.0
         with:
@@ -266,6 +314,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Run format script
         run: cargo run -p format-fixtures
       - name: Ensure no changes
@@ -282,6 +332,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Generate tests
         run: cargo run -p gentest
@@ -306,6 +358,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Install fontconfig
         run: sudo apt-get update && sudo apt-get install libfontconfig-dev
@@ -319,6 +373,8 @@ jobs:
     runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Install fontconfig
         run: sudo apt-get update && sudo apt-get install libfontconfig-dev
